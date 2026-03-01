@@ -1,0 +1,12 @@
+{
+  "name": "bye-bye-teheran",
+  "version": "1.0.0",
+  "description": "A retro-style arcade bombing game",
+  "scripts": {
+    "dev": "npx http-server -p 3000",
+    "deploy": "vercel --prod"
+  },
+  "keywords": ["game", "arcade", "retro"],
+  "author": "",
+  "license": "MIT"
+}

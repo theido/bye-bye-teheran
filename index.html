@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Board Context Team -&gt; Bye Bye Teheran</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #game-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 4/3;
+            background-color: #0B1021;
+            box-shadow: 0 0 20px rgba(0,255,255,0.2);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated; /* Retro look */
+            touch-action: none; /* Prevent scrolling on canvas */
+        }
+        
+        /* UI Overlays */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            text-align: center;
+        }
+        .hidden {
+            display: none !important;
+        }
+        
+        h1.title { color: #FF00FF; font-size: 40px; margin-bottom: 10px; text-shadow: 2px 2px 0 #fff; }
+        h2.status { font-size: 32px; margin-bottom: 10px; }
+        .win-text { color: #00FF00; }
+        .lose-text { color: #FF0000; }
+        
+        .score-display { font-size: 24px; margin-bottom: 20px; color: #FFFF00; }
+        
+        input[type="text"] {
+            background: #222;
+            border: 2px solid #00FFFF;
+            color: #00FFFF;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 24px;
+            padding: 10px;
+            text-align: center;
+            text-transform: uppercase;
+            width: 200px;
+            margin-bottom: 20px;
+            outline: none;
+        }
+        input[type="text"]:focus {
+            background: #333;
+            box-shadow: 0 0 10px #00FFFF;
+        }
+
+        button {
+            background: transparent;
+            border: 2px solid #fff;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 20px;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 5px;
+            text-transform: uppercase;
+        }
+        button:hover { background: #fff; color: #000; }
+        button:disabled { border-color: #555; color: #555; cursor: not-allowed; }
+
+        /* Leaderboard styles */
+        #leaderboard-container {
+            width: 80%;
+            max-width: 400px;
+            background: #111;
+            border: 2px solid #555;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-height: 50%;
+            overflow-y: auto;
+        }
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px dashed #333;
+            padding: 8px 0;
+            font-size: 18px;
+        }
+        .lb-row:nth-child(1) { color: #FFD700; font-weight: bold; } /* Gold */
+        .lb-row:nth-child(2) { color: #C0C0C0; } /* Silver */
+        .lb-row:nth-child(3) { color: #CD7F32; } /* Bronze */
+        
+        /* Mobile Touch Controls */
+        #touch-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            opacity: 0.6;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .d-pad, .action-pad { display: flex; gap: 10px; pointer-events: auto; }
+        .btn {
+            width: 60px; height: 60px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: 2px solid #fff; border-radius: 10px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; font-weight: bold; color: #fff;
+            user-select: none; -webkit-user-select: none;
+        }
+        .btn:active { background-color: rgba(255, 255, 255, 0.5); }
+
+        @media (min-width: 801px) { #touch-controls { display: none; } }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <!-- UI Overlay Layer -->
+    <div id="ui-overlay">
+        
+        <!-- Loading Screen -->
+        <div id="screen-loading">
+            <h2>INITIALIZING RADAR...</h2>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="screen-start" class="hidden">
+            <h1 class="title" style="font-size: 28px;">BOARD CONTEXT TEAM -&gt;<br>BYE BYE TEHERAN</h1>
+            <p>DESTROY THE CORE. AVOID FLAK.</p>
+            <button id="btn-start">START MISSION</button>
+            <button id="btn-view-lb">LEADERBOARD</button>
+        </div>
+
+        <!-- Submit Score Screen -->
+        <div id="screen-submit" class="hidden">
+            <h2 id="end-status" class="status lose-text">M.I.A.</h2>
+            <div class="score-display">FINAL SCORE: <span id="final-score">0</span></div>
+            <input type="text" id="player-name" maxlength="3" placeholder="AAA" autocomplete="off">
+            <br>
+            <button id="btn-submit-score">SUBMIT SCORE</button>
+            <button id="btn-skip-submit">SKIP</button>
+        </div>
+
+        <!-- Leaderboard Screen -->
+        <div id="screen-leaderboard" class="hidden">
+            <h2 style="color: #00FFFF; margin-top: 0;">TOP PILOTS</h2>
+            <div id="leaderboard-container">
+                <!-- Rows injected via JS -->
+                Loading data...
+            </div>
+            <button id="btn-lb-back">BACK TO BASE</button>
+        </div>
+
+    </div>
+
+    <!-- Touch Controls -->
+    <div id="touch-controls">
+        <div class="d-pad">
+            <div class="btn" id="btn-left">←</div>
+            <div class="btn" id="btn-right">→</div>
+        </div>
+        <div class="action-pad">
+            <div class="btn" id="btn-bomb">🔴</div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+/**
+ * BOARD CONTEXT TEAM -> BYE BYE TEHERAN - WITH GLOBAL LEADERBOARD
+ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// --- DOM Elements ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const uiOverlay = document.getElementById('ui-overlay');
+const screenLoading = document.getElementById('screen-loading');
+const screenStart = document.getElementById('screen-start');
+const screenSubmit = document.getElementById('screen-submit');
+const screenLeaderboard = document.getElementById('screen-leaderboard');
+
+const btnStart = document.getElementById('btn-start');
+const btnViewLb = document.getElementById('btn-view-lb');
+const btnSubmitScore = document.getElementById('btn-submit-score');
+const btnSkipSubmit = document.getElementById('btn-skip-submit');
+const btnLbBack = document.getElementById('btn-lb-back');
+
+const endStatus = document.getElementById('end-status');
+const finalScoreSpan = document.getElementById('final-score');
+const playerNameInput = document.getElementById('player-name');
+const leaderboardContainer = document.getElementById('leaderboard-container');
+
+// --- Firebase Setup ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'bye-bye-teheran-1';
+
+let app, auth, db;
+let currentUser = null;
+let leaderboardData = [];
+let firebaseInitialized = false;
+
+try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    firebaseInitialized = true;
+} catch (e) {
+    console.error("Firebase Initialization Error:", e);
+    // Continue game offline if firebase fails
+    showScreen('start');
+}
+
+// Authentication Flow (Rule 3)
+async function initAuth() {
+    if (!firebaseInitialized) return;
+    try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+            await signInAnonymously(auth);
+        }
+    } catch (e) {
+        console.error("Auth error", e);
+        showScreen('start');
+    }
+}
+
+// Listen to Auth State
+if (firebaseInitialized) {
+    initAuth();
+    onAuthStateChanged(auth, (user) => {
+        currentUser = user;
+        if (user) {
+            setupLeaderboardListener();
+            if (gameState === 'INIT') {
+                showScreen('start');
+            }
+        }
+    });
+}
+
+// Firestore Realtime Listener (Rule 2: Fetch all, sort in memory)
+function setupLeaderboardListener() {
+    if (!currentUser) return;
+    const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+    
+    onSnapshot(scoresRef, (snapshot) => {
+        let scores = [];
+        snapshot.forEach(doc => {
+            scores.push({ id: doc.id, ...doc.data() });
+        });
+        
+        // Sort descending by score
+        scores.sort((a, b) => b.score - a.score);
+        // Keep top 50
+        leaderboardData = scores.slice(0, 50);
+        renderLeaderboard();
+    }, (error) => {
+        console.error("Error fetching leaderboard:", error);
+    });
+}
+
+function renderLeaderboard() {
+    if (leaderboardData.length === 0) {
+        leaderboardContainer.innerHTML = "<p>No scores yet. Be the first!</p>";
+        return;
+    }
+    
+    let html = '';
+    leaderboardData.forEach((entry, index) => {
+        const rank = index + 1;
+        const name = (entry.name || '???').substring(0, 3).toUpperCase();
+        const score = entry.score || 0;
+        html += `
+            <div class="lb-row">
+                <span>#${rank} ${name}</span>
+                <span>${score.toLocaleString()}</span>
+            </div>
+        `;
+    });
+    leaderboardContainer.innerHTML = html;
+}
+
+async function submitScoreToFirebase(name, score) {
+    if (!currentUser || score <= 0) return;
+    const sanitizedName = name.trim().substring(0, 3).toUpperCase() || 'AAA';
+    
+    btnSubmitScore.disabled = true;
+    btnSubmitScore.innerText = "SUBMITTING...";
+    
+    try {
+        const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+        await addDoc(scoresRef, {
+            name: sanitizedName,
+            score: score,
+            timestamp: Date.now()
+        });
+    } catch (e) {
+        console.error("Error submitting score:", e);
+    }
+    
+    btnSubmitScore.disabled = false;
+    btnSubmitScore.innerText = "SUBMIT SCORE";
+    showScreen('leaderboard');
+}
+
+
+// --- Game State & Logic ---
+let gameState = 'INIT'; // INIT, START, PLAYING, SUBMIT, LEADERBOARD
+let score = 0;
+let frameCount = 0;
+let lastTime = 0;
+
+// Input Handling
+const keys = {
+    ArrowLeft: false,
+    ArrowRight: false,
+    Space: false
+};
+
+// UI Navigation Functions
+function hideAllScreens() {
+    screenLoading.classList.add('hidden');
+    screenStart.classList.add('hidden');
+    screenSubmit.classList.add('hidden');
+    screenLeaderboard.classList.add('hidden');
+}
+
+function showScreen(screen) {
+    hideAllScreens();
+    if (screen === 'none') {
+        uiOverlay.classList.add('hidden');
+        gameState = 'PLAYING';
+    } else {
+        uiOverlay.classList.remove('hidden');
+        if (screen === 'start') {
+            screenStart.classList.remove('hidden');
+            gameState = 'START';
+        } else if (screen === 'submit') {
+            screenSubmit.classList.remove('hidden');
+            gameState = 'SUBMIT';
+            finalScoreSpan.innerText = score.toLocaleString();
+            playerNameInput.value = '';
+            setTimeout(() => playerNameInput.focus(), 100);
+        } else if (screen === 'leaderboard') {
+            screenLeaderboard.classList.remove('hidden');
+            gameState = 'LEADERBOARD';
+        }
+    }
+}
+
+// Button Listeners
+btnStart.addEventListener('click', () => {
+    resetGame();
+    showScreen('none');
+});
+btnViewLb.addEventListener('click', () => {
+    showScreen('leaderboard');
+});
+btnSubmitScore.addEventListener('click', () => {
+    submitScoreToFirebase(playerNameInput.value, score);
+});
+btnSkipSubmit.addEventListener('click', () => {
+    showScreen('leaderboard');
+});
+btnLbBack.addEventListener('click', () => {
+    showScreen('start');
+});
+
+// Keyboard mapping
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowLeft') keys.ArrowLeft = true;
+    if (e.code === 'ArrowRight') keys.ArrowRight = true;
+    if (e.code === 'Space') {
+        keys.Space = true;
+        // Map spacebar to actions if in specific menus (prevents submitting form accidentally)
+        if (gameState === 'START' && e.target.tagName !== 'BUTTON') {
+            resetGame();
+            showScreen('none');
+            e.preventDefault();
+        }
+    }
+});
+window.addEventListener('keyup', (e) => {
+    if (e.code === 'ArrowLeft') keys.ArrowLeft = false;
+    if (e.code === 'ArrowRight') keys.ArrowRight = false;
+    if (e.code === 'Space') keys.Space = false;
+});
+
+// Touch controls mapping
+const bindBtn = (id, key) => {
+    const btn = document.getElementById(id);
+    const press = (e) => { e.preventDefault(); keys[key] = true; };
+    const release = (e) => { e.preventDefault(); keys[key] = false; };
+    btn.addEventListener('touchstart', press, {passive: false});
+    btn.addEventListener('touchend', release, {passive: false});
+    btn.addEventListener('mousedown', press);
+    btn.addEventListener('mouseup', release);
+};
+bindBtn('btn-left', 'ArrowLeft');
+bindBtn('btn-right', 'ArrowRight');
+bindBtn('btn-bomb', 'Space');
+
+
+// Entities
+let player;
+let bombs = [];
+let blocks = [];
+let missiles = [];
+let flaks = [];
+let particles = [];
+let stars = [];
+
+const colors = {
+    sky: '#0B1021',
+    ground: '#8B5A2B',
+    player: '#00FFFF',
+    bomb: '#FFFFFF',
+    bunkerRoof: '#A9A9A9',
+    bunkerMid: '#696969',
+    bunkerCore: '#FF00FF',
+    sam: '#FF4500',
+    missile: '#FFFF00',
+    flak: '#FF8C00',
+    particle1: '#FF4500',
+    particle2: '#FFFF00'
+};
+
+function resetGame() {
+    score = 0;
+    frameCount = 0;
+    bombs = [];
+    missiles = [];
+    flaks = [];
+    particles = [];
+    
+    player = {
+        x: 400, y: 80, w: 40, h: 20, vx: 0, vy: 0, speed: 6, hp: 3, dropCooldown: 0
+    };
+
+    stars = [];
+    for(let i=0; i<50; i++) {
+        stars.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * (canvas.height - 150),
+            size: Math.random() * 2 + 1
+        });
+    }
+
+    blocks = [];
+    blocks.push({x: 0, y: 500, w: 330, h: 100, type: 'ground'});
+    blocks.push({x: 470, y: 500, w: 330, h: 100, type: 'ground'});
+    blocks.push({x: 100, y: 460, w: 40, h: 40, type: 'building', hp: 1, pts: 100, color: '#4682B4'});
+    blocks.push({x: 180, y: 470, w: 30, h: 30, type: 'sam', hp: 1, pts: 250, color: colors.sam, timer: 60});
+    blocks.push({x: 600, y: 470, w: 30, h: 30, type: 'sam', hp: 1, pts: 250, color: colors.sam, timer: 120});
+    blocks.push({x: 680, y: 450, w: 50, h: 50, type: 'building', hp: 1, pts: 100, color: '#4682B4'});
+    
+    // Bunker structure
+    blocks.push({x: 330, y: 480, w: 140, h: 30, type: 'bunker_roof', hp: 1, pts: 500, color: colors.bunkerRoof});
+    blocks.push({x: 350, y: 510, w: 100, h: 30, type: 'bunker_mid', hp: 1, pts: 1000, color: colors.bunkerMid});
+    blocks.push({x: 370, y: 540, w: 60, h: 40, type: 'bunker_core', hp: 1, pts: 5000, color: colors.bunkerCore});
+}
+
+function rectIntersect(r1, r2) {
+    return !(r2.x > r1.x + r1.w || r2.x + r2.w < r1.x || r2.y > r1.y + r1.h || r2.y + r2.h < r1.y);
+}
+
+function createExplosion(x, y, color1, color2, amount) {
+    for (let i = 0; i < amount; i++) {
+        particles.push({
+            x: x, y: y,
+            vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8,
+            life: Math.random() * 30 + 10,
+            w: Math.random() * 4 + 2, h: Math.random() * 4 + 2,
+            color: Math.random() > 0.5 ? color1 : color2
+        });
+    }
+}
+
+function endGame(won) {
+    endStatus.innerText = won ? "MISSION ACCOMPLISHED" : "M.I.A.";
+    endStatus.className = won ? "status win-text" : "status lose-text";
+    
+    // Add small delay before showing submit screen to see explosion
+    setTimeout(() => {
+        showScreen('submit');
+    }, 1500);
+}
+
+function update() {
+    if (gameState !== 'PLAYING') return;
+    frameCount++;
+
+    // Player Movement
+    if (keys.ArrowLeft) player.vx -= 0.6;
+    if (keys.ArrowRight) player.vx += 0.6;
+    player.vx *= 0.9;
+    if (player.vx > player.speed) player.vx = player.speed;
+    if (player.vx < -player.speed) player.vx = -player.speed;
+    
+    player.x += player.vx;
+    if (player.x > canvas.width) player.x = -player.w;
+    if (player.x + player.w < 0) player.x = canvas.width;
+
+    // Bombing
+    if (player.dropCooldown > 0) player.dropCooldown--;
+    if (keys.Space && player.dropCooldown <= 0) {
+        bombs.push({
+            x: player.x + player.w / 2 - 4, y: player.y + player.h,
+            w: 8, h: 12, vx: player.vx * 0.5, vy: 2
+        });
+        player.dropCooldown = 25; 
+    }
+
+    // Bombs Physics & Collision
+    for (let i = bombs.length - 1; i >= 0; i--) {
+        let b = bombs[i];
+        b.vy += 0.15; 
+        b.x += b.vx;
+        b.y += b.vy;
+
+        let destroyed = false;
+        if (b.y > canvas.height) destroyed = true;
+
+        for (let j = blocks.length - 1; j >= 0; j--) {
+            let block = blocks[j];
+            if (rectIntersect(b, block)) {
+                destroyed = true;
+                if (block.type !== 'ground') {
+                    createExplosion(b.x, b.y, colors.particle1, colors.particle2, 15);
+                    block.hp--;
+                    if (block.hp <= 0) {
+                        score += block.pts;
+                        if (block.type === 'bunker_core') {
+                            createExplosion(block.x + block.w/2, block.y + block.h/2, '#FFFFFF', colors.bunkerCore, 150);
+                            gameState = 'END_ANIMATION';
+                            endGame(true);
+                        }
+                        blocks.splice(j, 1);
+                    }
+                } else {
+                    createExplosion(b.x, b.y, colors.ground, '#A0522D', 5);
+                }
+                break;
+            }
+        }
+        if (destroyed) bombs.splice(i, 1);
+    }
+
+    // SAMs
+    blocks.forEach(block => {
+        if (block.type === 'sam') {
+            block.timer--;
+            if (block.timer <= 0 && Math.abs((player.x + player.w/2) - (block.x + block.w/2)) < 250) {
+                missiles.push({ x: block.x + block.w / 2 - 4, y: block.y - 10, w: 8, h: 16, vx: 0, vy: -5 });
+                block.timer = 100;
+            }
+        }
+    });
+
+    for (let i = missiles.length - 1; i >= 0; i--) {
+        let m = missiles[i];
+        m.y += m.vy;
+        if (frameCount % 3 === 0) {
+            particles.push({ x: m.x + m.w/2, y: m.y + m.h, vx: 0, vy: 1, life: 10, w: 4, h: 4, color: '#AAAAAA' });
+        }
+        if (rectIntersect(m, player)) {
+            player.hp--;
+            createExplosion(player.x + player.w/2, player.y + player.h/2, colors.particle1, colors.sam, 30);
+            missiles.splice(i, 1);
+            if (player.hp <= 0 && gameState !== 'END_ANIMATION') {
+                gameState = 'END_ANIMATION';
+                endGame(false);
+            }
+            continue;
+        }
+        if (m.y < -50) missiles.splice(i, 1);
+    }
+
+    // Flak
+    if (frameCount % 70 === 0) {
+        flaks.push({ x: Math.random() * canvas.width, y: Math.random() * 250 + 50, radius: 2, maxRadius: Math.random() * 25 + 30, state: 'expanding' });
+    }
+
+    for (let i = flaks.length - 1; i >= 0; i--) {
+        let f = flaks[i];
+        if (f.state === 'expanding') {
+            f.radius += 1;
+            if (f.radius >= f.maxRadius) f.state = 'shrinking';
+        } else {
+            f.radius -= 0.6;
+            if (f.radius <= 0) {
+                flaks.splice(i, 1);
+                continue;
+            }
+        }
+
+        let cx = f.x, cy = f.y;
+        let testX = cx, testY = cy;
+        if (cx < player.x) testX = player.x; else if (cx > player.x + player.w) testX = player.x + player.w;
+        if (cy < player.y) testY = player.y; else if (cy > player.y + player.h) testY = player.y + player.h;
+        
+        let dist = Math.sqrt((cx-testX)**2 + (cy-testY)**2);
+        
+        if (dist <= f.radius && f.state === 'expanding' && frameCount % 15 === 0) {
+            player.hp--;
+            createExplosion(player.x, player.y, colors.flak, '#FFFFFF', 10);
+            if (player.hp <= 0 && gameState !== 'END_ANIMATION') {
+                gameState = 'END_ANIMATION';
+                endGame(false);
+            }
+        }
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.life--;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+// Draw Function
+function draw() {
+    ctx.fillStyle = colors.sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#FFFFFF';
+    stars.forEach(s => {
+        ctx.globalAlpha = Math.random() > 0.95 ? 0.3 : 1.0;
+        ctx.fillRect(s.x, s.y, s.size, s.size);
+    });
+    ctx.globalAlpha = 1.0;
+
+    blocks.forEach(b => {
+        ctx.fillStyle = b.type === 'ground' ? colors.ground : b.color;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        if (b.type === 'bunker_core') {
+            ctx.fillStyle = (frameCount % 20 < 10) ? '#FFFFFF' : colors.bunkerCore;
+            ctx.fillRect(b.x + 10, b.y + 10, b.w - 20, b.h - 20);
+        }
+    });
+
+    flaks.forEach(f => {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 140, 0, ${f.state==='expanding' ? 0.6 : 0.3})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.radius * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 69, 0, ${f.state==='expanding' ? 0.8 : 0.4})`;
+        ctx.fill();
+    });
+
+    ctx.fillStyle = colors.missile;
+    missiles.forEach(m => {
+        ctx.fillRect(m.x, m.y, m.w, m.h);
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(m.x, m.y, m.w, 4);
+        ctx.fillStyle = colors.missile;
+    });
+
+    ctx.fillStyle = colors.bomb;
+    bombs.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+
+    if (player && player.hp > 0) {
+        ctx.fillStyle = colors.player;
+        ctx.fillRect(player.x, player.y + 5, player.w, player.h - 10);
+        ctx.fillRect(player.x + 10, player.y, player.w - 20, player.h);
+        ctx.fillRect(player.x, player.y - 5, 10, 10);
+        if (keys.ArrowRight || keys.ArrowLeft) {
+            ctx.fillStyle = colors.particle2;
+            ctx.fillRect(player.x - 5, player.y + 7, 5, 6);
+        }
+    }
+
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+    });
+
+    // Simple HUD drawn on canvas
+    if (gameState === 'PLAYING' || gameState === 'END_ANIMATION') {
+        ctx.fillStyle = '#FFF';
+        ctx.font = "bold 20px 'Courier New'";
+        ctx.textAlign = 'left';
+        ctx.fillText(`SCORE: ${score}`, 20, 30);
+        ctx.textAlign = 'right';
+        ctx.fillText(`HP: ${player.hp > 0 ? player.hp : 0}`, canvas.width - 20, 30);
+    }
+}
+
+function loop(timestamp) {
+    let deltaTime = timestamp - lastTime;
+    // Render loop continuously running to keep background moving
+    if (deltaTime > 16) {
+        if (gameState === 'PLAYING' || gameState === 'END_ANIMATION') {
+            update();
+        } else if (gameState === 'START') {
+            // just idle animations for start menu
+            frameCount++;
+        }
+        draw();
+        lastTime = timestamp;
+    }
+    requestAnimationFrame(loop);
+}
+
+// Start visual engine
+resetGame();
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
