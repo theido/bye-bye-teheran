@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Board Context Team -&gt; Bye Bye Teheran</title>
+    <title>Board Intelligence say: "Bye Bye Teheran"</title>
     <style>
         body {
             margin: 0;
@@ -157,7 +157,7 @@
 
         <!-- Start Screen -->
         <div id="screen-start" class="hidden">
-            <h1 class="title" style="font-size: 28px;">BOARD CONTEXT TEAM -&gt;<br>BYE BYE TEHERAN</h1>
+            <h1 class="title" style="font-size: 28px;">BOARD INTELLIGENCE<br>SAY: "BYE BYE TEHERAN"</h1>
             <p>DESTROY THE CORE. AVOID FLAK.</p>
             <button id="btn-start">START MISSION</button>
             <button id="btn-view-lb">LEADERBOARD</button>
@@ -199,11 +199,8 @@
 
 <script type="module">
 /**
- * BOARD CONTEXT TEAM -> BYE BYE TEHERAN - WITH GLOBAL LEADERBOARD
+ * BOARD INTELLIGENCE SAY: "BYE BYE TEHERAN" - WITH GLOBAL LEADERBOARD
  */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- DOM Elements ---
 const canvas = document.getElementById('gameCanvas');
@@ -234,57 +231,83 @@ let currentUser = null;
 let leaderboardData = [];
 let firebaseInitialized = false;
 
-try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    firebaseInitialized = true;
-} catch (e) {
-    console.error("Firebase Initialization Error:", e);
-    // Continue game offline if firebase fails
-    showScreen('start');
-}
+// Dynamically load Firebase only if configured
+async function initializeFirebase() {
+    if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+        console.log('No Firebase config - running in offline mode');
+        return false;
+    }
 
-// Authentication Flow (Rule 3)
-async function initAuth() {
-    if (!firebaseInitialized) return;
     try {
+        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+        const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+        const { getFirestore, collection, addDoc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        firebaseInitialized = true;
+
+        // Set up auth
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
             await signInWithCustomToken(auth, __initial_auth_token);
         } else {
             await signInAnonymously(auth);
         }
+
+        // Listen to auth state
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                setupLeaderboardListener();
+            }
+        });
+
+        return true;
     } catch (e) {
-        console.error("Auth error", e);
-        showScreen('start');
+        console.error("Firebase initialization failed:", e);
+        return false;
     }
 }
 
-// Listen to Auth State
-if (firebaseInitialized) {
-    initAuth();
-    onAuthStateChanged(auth, (user) => {
-        currentUser = user;
-        if (user) {
-            setupLeaderboardListener();
-            if (gameState === 'INIT') {
-                showScreen('start');
-            }
-        }
-    });
-}
+// Start Firebase in background (don't block game)
+initializeFirebase().then(success => {
+    if (success) {
+        console.log('Firebase enabled - leaderboard available');
+    }
+}).catch(err => {
+    console.error('Firebase error:', err);
+});
+
+// Show start screen immediately
+setTimeout(() => {
+    if (gameState === 'INIT') {
+        showScreen('start');
+    }
+}, 100);
+
+// Store Firebase functions for later use
+let _collection, _addDoc, _onSnapshot;
 
 // Firestore Realtime Listener (Rule 2: Fetch all, sort in memory)
-function setupLeaderboardListener() {
-    if (!currentUser) return;
-    const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
-    
-    onSnapshot(scoresRef, (snapshot) => {
+async function setupLeaderboardListener() {
+    if (!currentUser || !db) return;
+
+    if (!_collection || !_onSnapshot) {
+        const firestoreModule = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+        _collection = firestoreModule.collection;
+        _addDoc = firestoreModule.addDoc;
+        _onSnapshot = firestoreModule.onSnapshot;
+    }
+
+    const scoresRef = _collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+
+    _onSnapshot(scoresRef, (snapshot) => {
         let scores = [];
         snapshot.forEach(doc => {
             scores.push({ id: doc.id, ...doc.data() });
         });
-        
+
         // Sort descending by score
         scores.sort((a, b) => b.score - a.score);
         // Keep top 50
@@ -317,15 +340,21 @@ function renderLeaderboard() {
 }
 
 async function submitScoreToFirebase(name, score) {
-    if (!currentUser || score <= 0) return;
+    if (!currentUser || score <= 0 || !db) return;
     const sanitizedName = name.trim().substring(0, 3).toUpperCase() || 'AAA';
-    
+
     btnSubmitScore.disabled = true;
     btnSubmitScore.innerText = "SUBMITTING...";
-    
+
     try {
-        const scoresRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
-        await addDoc(scoresRef, {
+        if (!_collection || !_addDoc) {
+            const firestoreModule = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            _collection = firestoreModule.collection;
+            _addDoc = firestoreModule.addDoc;
+        }
+
+        const scoresRef = _collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+        await _addDoc(scoresRef, {
             name: sanitizedName,
             score: score,
             timestamp: Date.now()
@@ -333,7 +362,7 @@ async function submitScoreToFirebase(name, score) {
     } catch (e) {
         console.error("Error submitting score:", e);
     }
-    
+
     btnSubmitScore.disabled = false;
     btnSubmitScore.innerText = "SUBMIT SCORE";
     showScreen('leaderboard');

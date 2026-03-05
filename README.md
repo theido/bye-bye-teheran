@@ -1,4 +1,4 @@
-# Board Context Team - Bye Bye Teheran
+# Board Intelligence say: "Bye Bye Teheran"
 
 A retro-style arcade bombing game with global leaderboards.
 
