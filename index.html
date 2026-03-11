@@ -223,8 +223,15 @@ const playerNameInput = document.getElementById('player-name');
 const leaderboardContainer = document.getElementById('leaderboard-container');
 
 // --- Firebase Setup ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'bye-bye-teheran-1';
+const firebaseConfig = {
+    apiKey: "AIzaSyA3vYjrfOtrfUme_20iZ14ij0RAD2SLOTg",
+    authDomain: "bye-bye-teheran.firebaseapp.com",
+    projectId: "bye-bye-teheran",
+    storageBucket: "bye-bye-teheran.firebasestorage.app",
+    messagingSenderId: "727430476043",
+    appId: "1:727430476043:web:d39024b200073631eeb20e"
+};
+const appId = 'bye-bye-teheran-1';
 
 let app, auth, db;
 let currentUser = null;
